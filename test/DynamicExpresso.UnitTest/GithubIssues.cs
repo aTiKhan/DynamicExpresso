@@ -1,4 +1,5 @@
-﻿using NUnit.Framework;
+﻿using DynamicExpresso.Exceptions;
+using NUnit.Framework;
 using System.Linq;
 
 // ReSharper disable SpecifyACultureInStringConversionExplicitly
@@ -78,6 +79,36 @@ namespace DynamicExpresso.UnitTest
 			var result = interpreter.Eval("a + b");
 
 			Assert.AreEqual(result, 2.2);
+		}
+
+		[Test]
+		public void GitHub_Issue_128()
+		{
+			var target = new Interpreter();
+
+			Assert.Throws<ParseException>(() => target.Eval("1+1*"));
+			Assert.Throws<ParseException>(() => target.Eval("1+1*'a'"));
+		}
+
+		[Test]
+		public void GitHub_Issue_133()
+		{
+			var interpreter = new Interpreter();
+
+			Assert.AreEqual(10000000001, interpreter.Eval("1+1e10"));
+			Assert.AreEqual(10000000001, interpreter.Eval("1+1e+10"));
+			Assert.AreEqual(1.0000000001, interpreter.Eval("1+1e-10"));
+			Assert.AreEqual(-20199999999, interpreter.Eval("1 - 2.02e10"));
+			Assert.AreEqual(-20199999999, interpreter.Eval("1 - 2.02e+10"));
+			Assert.AreEqual(0.999999999798, interpreter.Eval("1 - 2.02e-10"));
+			Assert.AreEqual(1e-10, interpreter.Eval("1/1e+10"));
+
+			interpreter.SetVariable("@Var1", 1);
+			interpreter.SetVariable("@Var2", 1e+10);
+			Assert.AreEqual(10000000001, interpreter.Eval("@Var1+@Var2"));
+
+			interpreter.SetVariable("e", 2);
+			Assert.AreEqual(10000000003, interpreter.Eval("@Var1+@Var2+e"));
 		}
 	}
 }

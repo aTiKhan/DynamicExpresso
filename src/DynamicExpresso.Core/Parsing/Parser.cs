@@ -27,6 +27,7 @@ namespace DynamicExpresso.Parsing
 		private const NumberStyles ParseLiteralNumberStyle = NumberStyles.AllowLeadingSign;
 		private const NumberStyles ParseLiteralUnsignedNumberStyle = NumberStyles.AllowLeadingSign;
 		private const NumberStyles ParseLiteralDecimalNumberStyle = NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint;
+		private const NumberStyles ParseLiteralDoubleNumberStyle = NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent;
 		private static readonly CultureInfo ParseCulture = CultureInfo.InvariantCulture;
 
 		private readonly ParserArguments _arguments;
@@ -83,7 +84,14 @@ namespace DynamicExpresso.Parsing
 			// MSDN C# "Operator precedence and associativity"
 			// https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/operators/
 
-			return ParseAssignment();
+			try
+			{
+				return ParseAssignment();
+			}
+			catch (InvalidOperationException ex)
+			{
+				throw WrapWithParseException(_token.pos, ErrorMessages.InvalidOperation, ex);
+			}
 		}
 
 		// = operator
@@ -261,6 +269,12 @@ namespace DynamicExpresso.Parsing
 				//	CheckAndPromoteOperands(isEquality ? typeof(ParseSignatures.IEqualitySignatures) : typeof(ParseSignatures.IRelationalSignatures),
 				//			op.text, ref left, ref right, op.pos);
 				//}
+
+				if((IsNullableType(left.Type) || IsNullableType(right.Type)) && (GetNonNullableType(left.Type) == right.Type || GetNonNullableType(right.Type) == left.Type))
+				{
+					left = GenerateNullableTypeConversion(left);
+					right = GenerateNullableTypeConversion(right);
+				}
 
 				CheckAndPromoteOperands(
 					isEquality ? typeof(ParseSignatures.IEqualitySignatures) : typeof(ParseSignatures.IRelationalSignatures),
@@ -627,7 +641,7 @@ namespace DynamicExpresso.Parsing
 			}
 			else
 			{
-				if (double.TryParse(text, ParseLiteralDecimalNumberStyle, ParseCulture, out double d))
+				if (double.TryParse(text, ParseLiteralDoubleNumberStyle, ParseCulture, out double d))
 					value = d;
 			}
 
@@ -1031,9 +1045,6 @@ namespace DynamicExpresso.Parsing
 
 		private static Expression ParseDynamicProperty(Type type, Expression instance, string propertyOrFieldName)
 		{
-#if NETSTANDARD2_0
-			throw new NotImplementedException("Dynamic types are not supported in .NET Standard build");
-#else
 			var binder = Microsoft.CSharp.RuntimeBinder.Binder.GetMember(
 				Microsoft.CSharp.RuntimeBinder.CSharpBinderFlags.None,
 				propertyOrFieldName,
@@ -1042,14 +1053,10 @@ namespace DynamicExpresso.Parsing
 				);
 
 			return Expression.Dynamic(binder, typeof(object), instance);
-#endif
 		}
 
 		private static Expression ParseDynamicMethodInvocation(Type type, Expression instance, string methodName, Expression[] args)
 		{
-#if NETSTANDARD2_0
-			throw new NotImplementedException("Dynamic types are not supported in .NET Standard build");
-#else
 			var argsDynamic = args.ToList();
 			argsDynamic.Insert(0, instance);
 			var binderM = Microsoft.CSharp.RuntimeBinder.Binder.InvokeMember(
@@ -1061,7 +1068,6 @@ namespace DynamicExpresso.Parsing
 				);
 
 			return Expression.Dynamic(binderM, typeof(object), argsDynamic);
-#endif
 		}
 
 		private Expression[] ParseArgumentList()
@@ -1244,12 +1250,6 @@ namespace DynamicExpresso.Parsing
 
 		private MethodData[] FindMethods(Type type, string methodName, bool staticAccess, Expression[] args)
 		{
-			//var exactMethod = type.GetMethod(methodName, args.Select(p => p.Type).ToArray());
-			//if (exactMethod != null)
-			//{
-			//	return new MethodData[] { new MethodData(){ MethodBase = exactMethod, Parameters = exactMethod.GetParameters(), PromotedParameters = args} };
-			//}
-
 			var flags = BindingFlags.Public | BindingFlags.DeclaredOnly |
 					(staticAccess ? BindingFlags.Static : BindingFlags.Instance) | _bindingCase;
 			foreach (var t in SelfAndBaseTypes(type))
@@ -1800,6 +1800,7 @@ namespace DynamicExpresso.Parsing
 						Expression.Constant(0)
 				);
 			}
+
 			return Expression.LessThan(left, right);
 		}
 
@@ -2184,10 +2185,29 @@ namespace DynamicExpresso.Parsing
 				throw CreateParseException(_token.pos, ErrorMessages.SyntaxError);
 		}
 
+		private static Exception WrapWithParseException(int pos, string msg, Exception ex)
+		{
+			return new ParseException(msg, pos, ex);
+		}
+
 		private static Exception CreateParseException(int pos, string format, params object[] args)
 		{
 			return new ParseException(string.Format(format, args), pos);
 		}
+
+		private static Expression GenerateNullableTypeConversion(Expression expr)
+		{
+			var exprType = expr.Type;
+
+			if (exprType.IsGenericType && exprType.GetGenericTypeDefinition() == typeof(Nullable<>))
+			{
+				return expr;
+			}
+
+			var conversionType = typeof(Nullable<>).MakeGenericType(expr.Type);
+			return Expression.ConvertChecked(expr, conversionType);
+		}
+
 
 		private class MethodData
 		{
