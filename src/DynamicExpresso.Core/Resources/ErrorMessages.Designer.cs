@@ -77,7 +77,40 @@ namespace DynamicExpresso.Resources {
                 return ResourceManager.GetString("AmbiguousMethodInvocation", resourceCulture);
             }
         }
-        
+
+        /// <summary>
+        ///   Looks up a localized string similar to Ambiguous invocation of user defined operator &apos;{0}&apos; in type &apos;{1}&apos;.
+        /// </summary>
+        internal static string AmbiguousUnaryOperatorInvocation
+        {
+            get
+            {
+                return ResourceManager.GetString("AmbiguousUnaryOperatorInvocation", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Ambiguous invocation of user defined operator &apos;{0}&apos; in types &apos;{1}&apos; and &apos;{2}&apos;.
+        /// </summary>
+        internal static string AmbiguousBinaryOperatorInvocation
+        {
+            get
+            {
+                return ResourceManager.GetString("AmbiguousBinaryOperatorInvocation", resourceCulture);
+            }
+        }
+
+        /// <summary>
+		/// Looks up a localized string similar to Ambiguous invocation of delegate (multiple overloads found).
+        /// </summary>
+        internal static string AmbiguousDelegateInvocation
+		{
+			get
+			{
+				return ResourceManager.GetString("AmbiguousDelegateInvocation", resourceCulture);
+			}
+		}
+
         /// <summary>
         ///   Looks up a localized string similar to Argument list incompatible with delegate expression.
         /// </summary>
@@ -140,7 +173,18 @@ namespace DynamicExpresso.Resources {
                 return ResourceManager.GetString("CloseParenOrOperatorExpected", resourceCulture);
             }
         }
-        
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;=&apos; expected.
+        /// </summary>
+        internal static string EqualExpected
+        {
+            get
+            {
+                return ResourceManager.GetString("EqualExpected", resourceCulture);
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized string similar to &apos;:&apos; expected.
         /// </summary>
@@ -338,7 +382,29 @@ namespace DynamicExpresso.Resources {
                 return ResourceManager.GetString("OpenParenExpected", resourceCulture);
             }
         }
-        
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{&apos; expected.
+        /// </summary>
+        internal static string OpenCurlyBracketExpected
+        {
+            get
+            {
+                return ResourceManager.GetString("OpenCurlyBracketExpected", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;}&apos; expected.
+        /// </summary>
+        internal static string CloseCurlyBracketExpected
+        {
+            get
+            {
+                return ResourceManager.GetString("CloseCurlyBracketExpected", resourceCulture);
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized string similar to Syntax error.
         /// </summary>

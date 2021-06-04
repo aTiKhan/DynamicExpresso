@@ -1,4 +1,4 @@
-# Dynamic Expresso
+﻿# Dynamic Expresso
 
 [![NuGet version](https://badge.fury.io/nu/DynamicExpresso.Core.svg)](http://badge.fury.io/nu/DynamicExpresso.Core)
 [![Build Status](https://public-davideicardi.visualstudio.com/dynamic-expresso/_apis/build/status/dynamic-expresso-CI?branchName=master)](https://public-davideicardi.visualstudio.com/dynamic-expresso/_build?definitionId=4
@@ -50,7 +50,7 @@ Source code and symbols (.pdb files) for debugging are available on [Symbol Sour
 - Full suite of unit tests
 - Good performance compared to other similar projects
 - Partial support of generic, params array and extension methods (only with implicit generic arguments detection)
-- Partial support of `dynamic` (`ExpandoObject` for get properties and method invocation, see #72)
+- Partial support of `dynamic` (`ExpandoObject` for get properties, method invocation and indexes(#142), see #72. `DynamicObject` for get properties and indexes, see #142)
 - Case insensitive expressions (default is case sensitive)
 - Ability to discover identifiers (variables, types, parameters) of a given expression
 - Small footprint, generated expressions are managed classes, can be unloaded and can be executed in a single appdomain
@@ -277,7 +277,10 @@ Some operators, like the assignment operator, can be disabled for security reaso
 			<td>Constants</td><td><code>true  false  null</code></td>
 		</tr>
 		<tr>
-			<td>Numeric</td><td><code>f  m</code></td>
+			<td>Real literal suffixes</td><td><code>d  f  m</code></td>
+		</tr>
+		<tr>
+			<td>Integer literal suffixes</td><td><code>u l ul lu</code></td>
 		</tr>
 		<tr>
 			<td>String/char</td><td><code>""  ''</code></td>
@@ -357,6 +360,22 @@ CollectionAssert.AreEqual(new[] { "x", "y" },
 			  detectedIdentifiers.UnknownIdentifiers.ToArray());
 ```
 
+## Default number type
+In C #, numbers are usually interpreted as integers or doubles if they have decimal places.
+
+In some cases it may be useful to be able to configure the default type of numbers if no particular suffix is ​​specified: for example in financial calculations, where usually numbers are interpreted as decimal type.
+
+In these cases you can set the default number type using `Interpreter.SetDefaultNumberType`  method.
+
+```csharp
+var target = new Interpreter();
+
+target.SetDefaultNumberType(DefaultNumberType.Decimal);
+
+Assert.IsInstanceOf(typeof(System.Decimal), target.Eval("45"));
+Assert.AreEqual(10M/3M, target.Eval("10/3")); // 3.33333333333 instead of 3
+```
+
 ## Limitations
 Not every C# syntaxes are supported. Here some examples of NOT supported features:
 
@@ -366,7 +385,7 @@ Not every C# syntaxes are supported. Here some examples of NOT supported feature
 - Explicit generic invocation (like `method<type>(arg)`) 
 - Lambda/delegate declaration (delegate and lamda are only supported as variables or parameters or as a return type of the expression)
 - Array/list/dictionary element assignment (set indexer operator)
-- Other operations on `dynamic` objects (only property and method invocation now are supported)
+- Other operations on `dynamic` objects (only property, method invocation and index now are supported)
 
 ## Exceptions
 If there is an error during the parsing always an exception of type `ParseException` is throwed. 
