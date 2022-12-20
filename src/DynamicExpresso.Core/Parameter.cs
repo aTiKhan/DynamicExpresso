@@ -20,6 +20,15 @@ namespace DynamicExpresso
 			Expression = System.Linq.Expressions.Expression.Parameter(Type, name);
 		}
 
+		public Parameter(ParameterExpression parameterExpression)
+		{
+			Name = parameterExpression.Name;
+			Type = parameterExpression.Type;
+			Value = null;
+
+			Expression = parameterExpression;
+		}
+
 		public Parameter(string name, Type type, object value = null)
 		{
 			Name = name;
@@ -27,6 +36,11 @@ namespace DynamicExpresso
 			Value = value;
 
 			Expression = System.Linq.Expressions.Expression.Parameter(type, name);
+		}
+
+		public static Parameter Create<T>(string name, T value)
+		{
+			return new Parameter(name, typeof(T), value);
 		}
 
 		public string Name { get; private set; }

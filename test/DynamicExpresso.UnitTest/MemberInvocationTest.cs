@@ -1,6 +1,7 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using DynamicExpresso.Exceptions;
 using NUnit.Framework;
 
 namespace DynamicExpresso.UnitTest
@@ -321,6 +322,14 @@ namespace DynamicExpresso.UnitTest
 			Assert.AreEqual(x.MethodWithGenericParam(y, y), target.Eval("x.MethodWithGenericParam(y, y)", parameters));
 			Assert.AreEqual(x.MethodWithGenericParam(y, z), target.Eval("x.MethodWithGenericParam(y, z)", parameters));
 			Assert.AreEqual(x.MethodWithGenericParam(y, w), target.Eval("x.MethodWithGenericParam(y, w)", parameters));
+
+			Assert.AreEqual(x.MethodWithGenericParamAndDefault(y,y), target.Eval("x.MethodWithGenericParamAndDefault(y,y)", parameters));
+			Assert.AreEqual(x.MethodWithGenericParamAndDefault(y), target.Eval("x.MethodWithGenericParamAndDefault(y)", parameters));
+			Assert.AreEqual(x.MethodWithGenericParamAndDefault1Levels(y), target.Eval("x.MethodWithGenericParamAndDefault1Levels(y)", parameters));
+			Assert.AreEqual(x.MethodWithGenericParamAndDefault2Levels(y), target.Eval("x.MethodWithGenericParamAndDefault2Levels(y)", parameters));
+			Assert.AreEqual(x.MethodWithGenericParamAndDefault2Levels(y, w), target.Eval("x.MethodWithGenericParamAndDefault2Levels(y, w)", parameters));
+
+
 		}
 
 		[Test]
@@ -370,7 +379,21 @@ namespace DynamicExpresso.UnitTest
 			target.SetVariable("x", x);
 			Assert.AreEqual(3, target.Eval("x.OverloadMethodWithParamsArray(2, 3, 1)"));
 		}
-		
+
+
+		[Test]
+		public void Generic_method_with_params()
+		{
+			var target = new Interpreter();
+			target.Reference(typeof(Utils));
+
+			var listInt = target.Eval<List<int>>("Utils.Array(1, 2, 3)");
+			Assert.AreEqual(new[] { 1, 2, 3 }, listInt);
+
+			// type parameter can't be inferred from usage
+			Assert.Throws<ParseException>(() => target.Eval<List<int>>("Utils.Array(1,\"str\", 3)"));
+		}
+
 		[Test]
 		public void Method_with_optional_param()
 		{
@@ -410,6 +433,81 @@ namespace DynamicExpresso.UnitTest
 
 			Assert.AreEqual(x.MethodWithOptionalNullParam(y), target.Eval("x.MethodWithOptionalNullParam(y)", parameters));
 			Assert.AreEqual(x.MethodWithOptionalNullParam(y, z), target.Eval("x.MethodWithOptionalNullParam(y, z)", parameters));
+		}
+
+		[Test]
+		public void Chaining_Methods()
+		{
+			var x = new MyTestService();
+
+			var target = new Interpreter();
+			target.SetVariable("x", x);
+
+			Assert.AreEqual(x.HelloWorld().ToUpper(), target.Eval("x.HelloWorld().ToUpper()"));
+		}
+
+		internal static class Utils
+		{
+			public static int GenericVsNonGeneric(int i) => 1;
+			public static int GenericVsNonGeneric<T>(T i) => 2;
+
+			public static int WithParamsArray(params int[] i) => 3;
+			public static int WithParamsArray(int i, params int[] j) => 4;
+			public static int WithParamsArray(int i, int j) => 5;
+
+			public static int WithParamsArray2(string str, Exception e) => 6;
+			public static int WithParamsArray2(string str, Exception e, params string[] args) => 7;
+			public static int WithParamsArray2(string str, Exception e, params int[] args) => 8;
+
+
+			public static List<T> Array<T>(params T[] array)
+			{
+				return new List<T>(array);
+			}
+		}
+
+		[Test]
+		public void Method_overload_generic_vs_non_generic()
+		{
+			var target = new Interpreter();
+			target.Reference(typeof(Utils));
+
+			Assert.AreEqual(1, target.Eval("Utils.GenericVsNonGeneric(12345)"));
+			Assert.AreEqual(2, target.Eval("Utils.GenericVsNonGeneric('a')"));
+		}
+
+		[Test]
+		public void Method_overload_params_array()
+		{
+			var target = new Interpreter();
+			target.Reference(typeof(Utils));
+
+			var arr = new int[] { 2 };
+			target.SetVariable("arr", arr);
+
+			Assert.AreEqual(3, target.Eval("Utils.WithParamsArray(arr)"));
+			Assert.AreEqual(4, target.Eval("Utils.WithParamsArray(1)"));
+			Assert.AreEqual(4, target.Eval("Utils.WithParamsArray(1, arr)"));
+			Assert.AreEqual(5, target.Eval("Utils.WithParamsArray(1, 2)"));
+			Assert.AreEqual(4, target.Eval("Utils.WithParamsArray(1, 2, 3)"));
+			Assert.AreEqual(4, target.Eval("Utils.WithParamsArray(1, 2, 3, 4)"));
+		}
+
+		[Test]
+		public void Method_overload_params_array_2()
+		{
+			var target = new Interpreter();
+			target.Reference(typeof(Utils));
+
+			var str = "str";
+			var e = new Exception();
+			var intg = 4;
+			target.SetVariable("str", str);
+			target.SetVariable("e", e);
+			target.SetVariable("intg", intg);
+			Assert.AreEqual(6, target.Eval("Utils.WithParamsArray2(str, e)"));
+			Assert.AreEqual(7, target.Eval("Utils.WithParamsArray2(str, e, str, str)"));
+			Assert.AreEqual(8, target.Eval("Utils.WithParamsArray2(str, e, intg, intg)"));
 		}
 
 		private interface MyTestInterface
@@ -467,6 +565,26 @@ namespace DynamicExpresso.UnitTest
 			public string MethodWithGenericParam<T>(string a, T p)
 			{
 				return string.Format("{0} {1}", a, p);
+			}
+
+			public T MethodWithGenericParamAndDefault<T>(T a, T b = default)
+			{
+				return a;
+			}
+
+			public T MethodWithGenericParamAndDefault1Levels<T>(T a, List<T> b = default)
+			{
+				return a;
+			}
+
+			public T MethodWithGenericParamAndDefault2Levels<T>(T a, List<List<T>> b = default)
+			{
+				return a;
+			}
+
+			public T MethodWithGenericParamAndDefault2Levels<T, T2>(T a, T2 b, List<T> c = default, List<List<T2>> d = default)
+			{
+				return a;
 			}
 
 			public string MethodWithOptionalParam(string param1, string param2 = "2", string param3 = "3")

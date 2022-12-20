@@ -1,10 +1,9 @@
-﻿# Dynamic Expresso
+# Dynamic Expresso
 
 [![NuGet version](https://badge.fury.io/nu/DynamicExpresso.Core.svg)](http://badge.fury.io/nu/DynamicExpresso.Core)
-[![Build Status](https://public-davideicardi.visualstudio.com/dynamic-expresso/_apis/build/status/dynamic-expresso-CI?branchName=master)](https://public-davideicardi.visualstudio.com/dynamic-expresso/_build?definitionId=4
-)
+[![.NET CI](https://github.com/dynamicexpresso/DynamicExpresso/actions/workflows/ci.yml/badge.svg)](https://github.com/dynamicexpresso/DynamicExpresso/actions/workflows/ci.yml)
 
-Available platforms: .NET Core 2.0, .NET 4.5, .NET 4.6.1
+Supported platforms: .NET Core 3.1, .NET Core 5.0 and above, .NET 4.6.2
 
 Dynamic Expresso is an interpreter for simple C# statements written in .NET Standard 2.0.
 Dynamic Expresso embeds its own parsing logic, really interprets C# statements by converting it to .NET lambda expressions or delegates.
@@ -13,7 +12,7 @@ Using Dynamic Expresso developers can create scriptable applications, execute .N
 
 Statements are written using a subset of C# language specifications. Global variables or parameters can be injected and used inside expressions. It doesn't generate assembly but it creates an expression tree on the fly. 
 
-![dynamic expresso workflow](https://raw.github.com/davideicardi/DynamicExpresso/master/docs/workflow.png "dynamic expresso workflow")
+![dynamic expresso workflow](https://raw.github.com/dynamicexpresso/DynamicExpresso/master/docs/workflow.png "dynamic expresso workflow")
 
 For example you can evaluate math expressions:
 ```csharp
@@ -51,6 +50,7 @@ Source code and symbols (.pdb files) for debugging are available on [Symbol Sour
 - Good performance compared to other similar projects
 - Partial support of generic, params array and extension methods (only with implicit generic arguments detection)
 - Partial support of `dynamic` (`ExpandoObject` for get properties, method invocation and indexes(#142), see #72. `DynamicObject` for get properties and indexes, see #142)
+- Partial support of lambda expressions (disabled by default, because it has a slight performance penalty)
 - Case insensitive expressions (default is case sensitive)
 - Ability to discover identifiers (variables, types, parameters) of a given expression
 - Small footprint, generated expressions are managed classes, can be unloaded and can be executed in a single appdomain
@@ -114,6 +114,25 @@ var myFunc = target.Parse("x + y", parameters);
 
 Assert.AreEqual(30, myFunc.Invoke(23, 7));
 Assert.AreEqual(30, myFunc.Invoke(32, -2));
+```
+
+### Special identifiers
+
+Either a variable or a parameter with name `this` can be referenced implicitly.
+
+```csharp
+class Customer { public string Name { get; set; } }
+
+var target = new Interpreter();
+
+// 'this' is treated as a special identifier and can be accessed implicitly 
+target.SetVariable("this", new Customer { Name = "John" });
+
+// explicit context reference via 'this' variable
+Assert.AreEqual("John", target.Eval("this.Name"));
+
+// 'this' variable is referenced implicitly
+Assert.AreEqual("John", target.Eval("Name"));
 ```
 
 ### Built-in types and custom types
@@ -303,14 +322,24 @@ The following character escape sequences are supported inside string or char lit
 - `\v` - Vertical quote (character 11)
 
 ### Type's members invocation
+
 Any standard .NET method, field, property or constructor can be invoked.
 ```csharp
-var x = new MyTestService();
-var target = new Interpreter().SetVariable("x", x);
+var service = new MyTestService();
+var context = new MyTestContext();
 
-Assert.AreEqual(x.HelloWorld(), target.Eval("x.HelloWorld()"));
-Assert.AreEqual(x.AProperty, target.Eval("x.AProperty"));
-Assert.AreEqual(x.AField, target.Eval("x.AField"));
+var target = new Interpreter()
+  .SetVariable("x", service)
+  .SetVariable("this", context);
+
+Assert.AreEqual(service.HelloWorld(), target.Eval("x.HelloWorld()"));
+Assert.AreEqual(service.AProperty, target.Eval("x.AProperty"));
+Assert.AreEqual(service.AField, target.Eval("x.AField"));
+
+// implicit context reference
+Assert.AreEqual(context.GetContextId(), target.Eval("GetContextId()"));
+Assert.AreEqual(context.ContextName, target.Eval("ContextName"));
+Assert.AreEqual(context.ContextField, target.Eval("ContextField"));
 ```
 ```csharp
 var target = new Interpreter();
@@ -330,6 +359,33 @@ Assert.AreEqual(x.Count(), target.Eval("x.Count()"));
 - Generics, only partially supported (only implicit, you cannot invoke an explicit generic method)
 - Params array (see C# `params` keyword)
 
+### Lambda expressions
+Dynamic Expresso has partial supports of lambda expressions. For example, you can use any Linq method:
+
+```csharp
+var x = new string[] { "this", "is", "awesome" };
+var options = InterpreterOptions.Default | InterpreterOptions.LambdaExpressions; // enable lambda expressions
+var target = new Interpreter(options)
+	.SetVariable("x", x);
+
+var results = target.Eval<IEnumerable<string>>("x.Where(str => str.Length > 5).Select(str => str.ToUpper())");
+Assert.AreEqual(new[] { "AWESOME" }, results);
+```
+
+Note that parsing lambda expressions is disabled by default, because it has a slight performance cost.
+To enable them, you must set the `InterpreterOptions.LambdaExpressions` flag.
+
+It's also possible to create a delegate directly from a lambda expression:
+
+```csharp
+var options = InterpreterOptions.Default | InterpreterOptions.LambdaExpressions; // enable lambda expressions
+var target = new Interpreter(options)
+	.SetVariable("increment", 3); // access a variable from the lambda expression
+
+var myFunc = target.Eval<Func<int, string, string>>("(i, str) => str.ToUpper() + (i + increment)");
+Assert.AreEqual("TEST8", lambda.Invoke(5, "test"));
+```
+
 ### Case sensitive/insensitive
 By default all expressions are considered case sensitive (`VARX` is different than `varx`, as in C#).
 There is an option to use a case insensitive parser. For example:
@@ -344,6 +400,8 @@ var parameters = new[] {
 Assert.AreEqual(x, target.Eval("x", parameters));
 Assert.AreEqual(x, target.Eval("X", parameters));
 ```
+
+
 
 ## Identifiers detection
 Sometimes you need to check which identifiers (variables, types, parameters) are used in expression before parsing it.
@@ -435,31 +493,34 @@ Here are some possible usage scenarios of Dynamic Expresso:
 - LINQ dynamic query
 
 ## Future roadmap
-See [github open issues and milestones](https://github.com/davideicardi/DynamicExpresso/issues).
+
+See [github open issues and milestones](https://github.com/dynamicexpresso/DynamicExpresso/issues).
 
 ## Help and support
+
 If you need help you can try one of the following:
 
-- [FAQ](https://github.com/davideicardi/DynamicExpresso/wiki/FAQ) wiki page
-- github [official repository](https://github.com/davideicardi/DynamicExpresso)
+- [FAQ](https://github.com/dynamicexpresso/DynamicExpresso/wiki/FAQ) wiki page
+- github [official repository](https://github.com/dynamicexpresso/DynamicExpresso)
 
+## Maintainers
+
+Currently Dynamic Expresso is maintained by @davideicardi and @metoule.
 
 ## Credits
+
 This project is based on two old works:
-- "Converting String expressions to Funcs with FunctionFactory by Matthew Abbott" (http://www.fidelitydesign.net/?p=333) 
-- DynamicQuery - Dynamic LINQ - Visual Studio 2008 sample:
-	- http://msdn.microsoft.com/en-us/vstudio/bb894665.aspx 
+- "Converting String expressions to Funcs with FunctionFactory by Matthew Abbott" (link not more available) 
+- DynamicQuery - Dynamic LINQ - Visual Studio 2008 sample: http://msdn.microsoft.com/en-us/vstudio/bb894665.aspx 
 
-
-Thanks to JetBrain for helping me with a license of Resharper.
-[![JetBrain Resharper](https://github.com//davideicardi/DynamicExpresso/blob/master/docs/jetbrains.png?raw=true)](https://www.jetbrains.com/)
+Thanks to all [contributors](https://github.com/dynamicexpresso/DynamicExpresso/graphs/contributors)!
 
 ## Other resources or similar projects
 Below you can find a list of some similar projects that I have evaluated or that can be interesting to study. 
 For one reason or another none of these projects exactly fit my needs so I decided to write my own interpreter.
 
 - Roslyn Project - Scripting API - https://github.com/dotnet/roslyn/wiki/Scripting-API-Samples
-	- This is the new Microsoft Official Compiler as a service library. I suggest to consider using Roslyin instead of DynamicExpresso whenever possible.
+	- This is the new Microsoft Official Compiler as a service library. I suggest to consider using Roslyin instead of DynamicExpresso for complex scenarios.
 - Mono.CSharp - C# Compiler Service and Runtime Evaulator - http://docs.go-mono.com/index.aspx?link=N%3AMono.CSharp
 - NCalc - Mathematical Expressions Evaluator for .NET - http://ncalc.codeplex.com/
 - David Wynne CSharpEval https://github.com/DavidWynne/CSharpEval
@@ -472,9 +533,14 @@ For one reason or another none of these projects exactly fit my needs so I decid
 - IronJS, IronRuby, IronPython
 - paxScript.NET http://eco148-88394.innterhost.net/paxscriptnet/
 
-## Developer notes
+## Continuous Integration
 
-I have setup a continuous integration environment with Visual Studio Online Team Services.
+A continuous integration pipeline is configured using Github Actions, see `.github/workflows` folder.
+
+Whenever a new [Release](https://github.com/dynamicexpresso/DynamicExpresso/releases) is created, Nuget packages are published. For snapshot releases packages are published only to Github.
+For official releases packages are published to both GitHub and Nuget.
+
+## Compiling and run tests
 
 To compile the solution you can run:
 
@@ -490,10 +556,10 @@ To run unit tests:
 
 or run unit tests for a specific project with a specific framework:
 
-	dotnet test ./test/DynamicExpresso.UnitTest/DynamicExpresso.UnitTest.csproj -f netcoreapp2.0
+	dotnet test DynamicExpresso.sln --no-restore -c Release --verbosity normal -f netcoreapp3.1
 
 Add `--logger:trx` to generate test results for VSTS.
 
 ## Release notes
 
-See [releases page](https://github.com/davideicardi/DynamicExpresso/releases).
+See [releases page](https://github.com/dynamicexpresso/DynamicExpresso/releases).

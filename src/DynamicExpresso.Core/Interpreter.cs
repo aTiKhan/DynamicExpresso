@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using DynamicExpresso.Exceptions;
+using System.Dynamic;
 
 namespace DynamicExpresso
 {
@@ -35,7 +36,9 @@ namespace DynamicExpresso
 		{
 			var caseInsensitive = options.HasFlag(InterpreterOptions.CaseInsensitive);
 
-			_settings = new ParserSettings(caseInsensitive);
+			var lateBindObject = options.HasFlag(InterpreterOptions.LateBindObject);
+
+			_settings = new ParserSettings(caseInsensitive, lateBindObject);
 
 			if ((options & InterpreterOptions.SystemKeywords) == InterpreterOptions.SystemKeywords)
 			{
@@ -53,7 +56,20 @@ namespace DynamicExpresso
 				Reference(LanguageConstants.CommonTypes);
 			}
 
+			if ((options & InterpreterOptions.LambdaExpressions) == InterpreterOptions.LambdaExpressions)
+			{
+				_settings.LambdaExpressions = true;
+			}
+
 			_visitors.Add(new DisableReflectionVisitor());
+		}
+
+		/// <summary>
+		/// Create a new interpreter with the settings copied from another interpreter
+		/// </summary>
+		internal Interpreter(ParserSettings settings)
+		{
+			_settings = settings;
 		}
 		#endregion
 
@@ -151,6 +167,8 @@ namespace DynamicExpresso
 		#region Register identifiers
 		/// <summary>
 		/// Allow the specified function delegate to be called from a parsed expression.
+		/// Overloads can be added (ie. multiple delegates can be registered with the same name).
+		/// A delegate will replace any delegate with the exact same signature that is already registered.
 		/// </summary>
 		/// <param name="name"></param>
 		/// <param name="value"></param>
@@ -184,6 +202,17 @@ namespace DynamicExpresso
 				throw new ArgumentNullException(nameof(name));
 
 			return SetExpression(name, Expression.Constant(value));
+		}
+
+		/// <summary>
+		/// Allow the specified variable to be used in a parsed expression.
+		/// </summary>
+		/// <param name="name"></param>
+		/// <param name="value"></param>
+		/// <returns></returns>
+		public Interpreter SetVariable<T>(string name, T value)
+		{
+			return SetVariable(name, value, typeof(T));
 		}
 
 		/// <summary>
@@ -245,6 +274,50 @@ namespace DynamicExpresso
 
 			_settings.Identifiers[identifier.Name] = identifier;
 
+			return this;
+		}
+
+		/// <summary>
+		/// Remove <paramref name="name"/> from the list of known identifiers.
+		/// </summary>
+		/// <param name="name"></param>>
+		/// <returns></returns>
+		public Interpreter UnsetFunction(string name)
+		{
+			return UnsetIdentifier(name);
+		}
+
+		/// <summary>
+		/// Remove <paramref name="name"/> from the list of known identifiers.
+		/// </summary>
+		/// <param name="name"></param>>
+		/// <returns></returns>
+		public Interpreter UnsetVariable(string name)
+		{
+			return UnsetIdentifier(name);
+		}
+
+		/// <summary>
+		/// Remove <paramref name="name"/> from the list of known identifiers.
+		/// </summary>
+		/// <param name="name"></param>>
+		/// <returns></returns>
+		public Interpreter UnsetExpression(string name)
+		{
+			return UnsetIdentifier(name);
+		}
+
+		/// <summary>
+		/// Remove <paramref name="name"/> from the list of known identifiers.
+		/// </summary>
+		/// <param name="name"></param>
+		/// <returns></returns>
+		public Interpreter UnsetIdentifier(string name)
+		{
+			if (string.IsNullOrWhiteSpace(name))
+				throw new ArgumentNullException(nameof(name));
+
+			_settings.Identifiers.Remove(name);
 			return this;
 		}
 		#endregion
@@ -377,9 +450,29 @@ namespace DynamicExpresso
 			return lambda.LambdaExpression<TDelegate>();
 		}
 
+		internal LambdaExpression ParseAsExpression(Type delegateType, string expressionText, params string[] parametersNames)
+		{
+			var delegateInfo = ReflectionExtensions.GetDelegateInfo(delegateType, parametersNames);
+
+			// return type is object means that we have no information beforehand
+			// => we force it to typeof(void) so that no conversion expression is emitted by the parser
+			//    and the actual expression type is preserved
+			var returnType = delegateInfo.ReturnType;
+			if (returnType == typeof(object))
+				returnType = typeof(void);
+
+			var lambda = ParseAsLambda(expressionText, returnType, delegateInfo.Parameters);
+			return lambda.LambdaExpression(delegateType);
+		}
+
 		public Lambda ParseAs<TDelegate>(string expressionText, params string[] parametersNames)
 		{
-			var delegateInfo = ReflectionExtensions.GetDelegateInfo(typeof(TDelegate), parametersNames);
+			return ParseAs(typeof(TDelegate), expressionText, parametersNames); 
+		}
+
+		internal Lambda ParseAs(Type delegateType, string expressionText, params string[] parametersNames)
+		{
+			var delegateInfo = ReflectionExtensions.GetDelegateInfo(delegateType, parametersNames);
 
 			return ParseAsLambda(expressionText, delegateInfo.ReturnType, delegateInfo.Parameters);
 		}

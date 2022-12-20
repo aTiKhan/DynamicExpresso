@@ -1,4 +1,4 @@
-﻿namespace DynamicExpresso.Parsing
+namespace DynamicExpresso.Parsing
 {
 	internal enum TokenId
 	{
@@ -17,8 +17,8 @@
 		Plus,
 		Comma,
 		Minus,
+		Tilde,
 		Dot,
-		QuestionDot,
 		QuestionQuestion,
 		Slash,
 		Colon,
@@ -38,7 +38,8 @@
 		Equal,
 		Caret,
 		OpenCurlyBracket,
-		CloseCurlyBracket
+		CloseCurlyBracket,
+		LambdaArrow,
 	}
 
 }

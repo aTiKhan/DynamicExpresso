@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using NUnit.Framework;
 using System.Linq.Expressions;
 using DynamicExpresso.Exceptions;
@@ -138,6 +138,31 @@ namespace DynamicExpresso.UnitTest
 									.SetFunction("pow", pow);
 
 			Assert.AreEqual(9.0, target.Eval("pow(3, 2)"));
+		}
+
+		[Test]
+		public void Keywords_with_same_overload_twice()
+		{
+			Func<double, double, double> pow = (x, y) => Math.Pow(x, y);
+			var target = new Interpreter()
+									.SetFunction("pow", pow)
+									.SetFunction("pow", pow);
+
+			Assert.AreEqual(9.0, target.Eval("pow(3, 2)"));
+		}
+
+		[Test]
+		public void Replace_same_overload_signature()
+		{
+			Func<double, int> f1 = d => 1;
+			Func<double, int> f2 = d => 2;
+
+			var target = new Interpreter()
+									.SetFunction("f", f1)
+									.SetFunction("f", f2);
+
+			// f2 should override the f1 registration, because both delegates have the same signature
+			Assert.AreEqual(2, target.Eval("f(0d)"));
 		}
 
 		[Test]

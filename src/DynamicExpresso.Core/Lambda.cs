@@ -1,10 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
-using DynamicExpresso.Exceptions;
 
 namespace DynamicExpresso
 {
@@ -15,28 +14,22 @@ namespace DynamicExpresso
 	{
 		private readonly Expression _expression;
 		private readonly ParserArguments _parserArguments;
-
-		private readonly Delegate _delegate;
+		private readonly Lazy<Delegate> _delegate;
 
 		internal Lambda(Expression expression, ParserArguments parserArguments)
 		{
-			if (expression == null)
-				throw new ArgumentNullException("expression");
-			if (parserArguments == null)
-				throw new ArgumentNullException("parserArguments");
+			_expression = expression ?? throw new ArgumentNullException(nameof(expression));
+			_parserArguments = parserArguments ?? throw new ArgumentNullException(nameof(parserArguments));
 
-			_expression = expression;
-			_parserArguments = parserArguments;
-
-			// Note: I always compile the generic lambda. Maybe in the future this can be a setting because if I generate a typed delegate this compilation is not required.
-			var lambdaExpression = Expression.Lambda(_expression, _parserArguments.UsedParameters.Select(p => p.Expression).ToArray());
-			_delegate = lambdaExpression.Compile();
+			// Note: I always lazy compile the generic lambda. Maybe in the future this can be a setting because if I generate a typed delegate this compilation is not required.
+			_delegate = new Lazy<Delegate>(() =>
+				Expression.Lambda(_expression, _parserArguments.UsedParameters.Select(p => p.Expression).ToArray()).Compile());
 		}
 
 		public Expression Expression { get { return _expression; } }
 		public bool CaseInsensitive { get { return _parserArguments.Settings.CaseInsensitive; } }
 		public string ExpressionText { get { return _parserArguments.ExpressionText; } }
-		public Type ReturnType { get { return _delegate.Method.ReturnType; } }
+		public Type ReturnType { get { return Expression.Type; } }
 
 		/// <summary>
 		/// Gets the parameters actually used in the expression parsed.
@@ -72,9 +65,9 @@ namespace DynamicExpresso
 		public object Invoke(IEnumerable<Parameter> parameters)
 		{
 			var args = (from usedParameter in UsedParameters
-				from actualParameter in parameters
-				where usedParameter.Name.Equals(actualParameter.Name, _parserArguments.Settings.KeyComparison)
-				select actualParameter.Value)
+						from actualParameter in parameters
+						where usedParameter.Name.Equals(actualParameter.Name, _parserArguments.Settings.KeyComparison)
+						select actualParameter.Value)
 				.ToArray();
 
 			return InvokeWithUsedParameters(args);
@@ -113,7 +106,7 @@ namespace DynamicExpresso
 		{
 			try
 			{
-				return _delegate.DynamicInvoke(orderedArgs);
+				return _delegate.Value.DynamicInvoke(orderedArgs);
 			}
 			catch (TargetInvocationException exc)
 			{
@@ -154,6 +147,18 @@ namespace DynamicExpresso
 		public Expression<TDelegate> LambdaExpression<TDelegate>()
 		{
 			return Expression.Lambda<TDelegate>(_expression, DeclaredParameters.Select(p => p.Expression).ToArray());
+		}
+
+		internal LambdaExpression LambdaExpression(Type delegateType)
+		{
+			var types = delegateType.GetGenericArguments();
+
+			// return type
+			types[types.Length - 1] = _expression.Type;
+
+			var genericType = delegateType.GetGenericTypeDefinition();
+			var inferredDelegateType = genericType.MakeGenericType(types);
+			return Expression.Lambda(inferredDelegateType, _expression, DeclaredParameters.Select(p => p.Expression).ToArray());
 		}
 	}
 }
