@@ -2,13 +2,13 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.Dynamic;
 using System.Globalization;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Security;
 using System.Text;
 using DynamicExpresso.Exceptions;
 using DynamicExpresso.Resources;
@@ -2361,7 +2361,18 @@ namespace DynamicExpresso.Parsing
 				.Select(p => actualGenericArgs.TryGetValue(p.Name, out var typ) ? typ : typeof(object))
 				.ToArray();
 
-			return methodInfo.MakeGenericMethod(genericArgs);
+			MethodInfo genericMethod = null;
+			try
+			{
+				genericMethod = methodInfo.MakeGenericMethod(genericArgs);
+			}
+			catch (ArgumentException e) when (e.InnerException is VerificationException)
+			{
+				// this exception is thrown when a generic argument violates the generic constraints
+				return null;
+			}
+
+			return genericMethod;
 		}
 
 		private static Dictionary<string, Type> ExtractActualGenericArguments(
@@ -2398,8 +2409,12 @@ namespace DynamicExpresso.Parsing
 					}
 					else
 					{
-						var innerGenericTypes = ExtractActualGenericArguments(requestedType.GetGenericArguments(), actualType.GetGenericArguments());
+						var requestedInnerGenericArgs = requestedType.GetGenericArguments();
+						var actualInnerGenericArgs = actualType.GetGenericArguments();
+						if (requestedInnerGenericArgs.Length != actualInnerGenericArgs.Length)
+							continue;
 
+						var innerGenericTypes = ExtractActualGenericArguments(requestedInnerGenericArgs, actualInnerGenericArgs);
 						foreach (var innerGenericType in innerGenericTypes)
 							extractedGenericTypes[innerGenericType.Key] = innerGenericType.Value;
 					}
@@ -2437,7 +2452,7 @@ namespace DynamicExpresso.Parsing
 
 			if (type.IsGenericType && !IsNumericType(type))
 			{
-				var genericType = FindAssignableGenericType(expr.Type, type.GetGenericTypeDefinition());
+				var genericType = FindAssignableGenericType(expr.Type, type);
 				if (genericType != null)
 					return Expression.Convert(expr, genericType);
 			}
@@ -2457,6 +2472,11 @@ namespace DynamicExpresso.Parsing
 		private static bool IsCompatibleWith(Type source, Type target)
 		{
 			if (source == target)
+			{
+				return true;
+			}
+
+			if (target.IsGenericParameter)
 			{
 				return true;
 			}
@@ -2611,8 +2631,9 @@ namespace DynamicExpresso.Parsing
 		}
 
 		// from http://stackoverflow.com/a/1075059/209727
-		private static Type FindAssignableGenericType(Type givenType, Type genericTypeDefinition)
+		private static Type FindAssignableGenericType(Type givenType, Type constructedGenericType)
 		{
+			var genericTypeDefinition = constructedGenericType.GetGenericTypeDefinition();
 			var interfaceTypes = givenType.GetInterfaces();
 
 			foreach (var it in interfaceTypes)
@@ -2624,7 +2645,16 @@ namespace DynamicExpresso.Parsing
 			}
 
 			if (givenType.IsGenericType && givenType.GetGenericTypeDefinition() == genericTypeDefinition)
+			{
+				// the given type has the same generic type of the fully constructed generic type
+				//  => check if the generic arguments are compatible (e.g. Nullable<int> and Nullable<DateTime>: int is not compatible with DateTime)
+				var givenTypeGenericsArgs = givenType.GenericTypeArguments;
+				var constructedGenericsArgs = constructedGenericType.GenericTypeArguments;
+				if (givenTypeGenericsArgs.Zip(constructedGenericsArgs, (g, c) => IsCompatibleWith(g, c)).Any(compatible => !compatible))
+					return null;
+
 				return givenType;
+			}
 
 			var baseType = givenType.BaseType;
 			if (baseType == null)
